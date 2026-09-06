@@ -64,7 +64,12 @@ async function runChecks({ frames, lat, lon, gpsAccuracy, captureTimestamp, hash
     gpsAccuracy: gpsAccuracyResult,
     duplicate: hashStore.checkDuplicate(dHash),
     timestampFreshness: checkTimestampFreshness(captureTimestamp),
-    exif: { pass: exif.pass, reason: exif.flags.join("; ") || "EXIF consistent", flags: exif.flags },
+    exif: {
+      pass: exif.pass,
+      reason: exif.flags.join("; ") || "EXIF consistent",
+      flags: exif.flags,
+      metadataUnavailable: exif.metadataUnavailable || false,
+    },
     glare,
     bezel,
     moire,
@@ -98,7 +103,8 @@ async function validateImageFiles(frames) {
 }
 
 /** Build the HTTP app separately from listening so API tests and hosts can inject dependencies. */
-export function createApp({ hashStore = new DuplicateHashStore(), evaluate = runChecks, ipfsUploader = uploadToIPFS } = {}) {
+export function createApp({ hashStore = new DuplicateHashStore(), evaluate = runChecks, ipfsUploader = uploadToIPFS,
+  frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:5173" } = {}) {
   const app = express();
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -112,7 +118,11 @@ export function createApp({ hashStore = new DuplicateHashStore(), evaluate = run
     },
   });
 
-  app.use(cors());
+  const allowedOrigin = new URL(frontendOrigin);
+  if (!["http:", "https:"].includes(allowedOrigin.protocol) || allowedOrigin.origin !== frontendOrigin) {
+    throw new Error("FRONTEND_ORIGIN must be an exact HTTP(S) origin without a trailing slash or path");
+  }
+  app.use(cors({ origin: frontendOrigin }));
   app.use(express.json({ limit: "2mb" }));
 
   app.post("/api/check", upload.array("frames", MAX_FILES), async (req, res, next) => {
@@ -145,7 +155,7 @@ export function createApp({ hashStore = new DuplicateHashStore(), evaluate = run
     }
   });
 
-  app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+  app.get(["/health", "/api/health"], (_req, res) => res.json({ status: "ok" }));
   app.use((error, _req, res, _next) => {
     if (error instanceof multer.MulterError) {
       const status = ["LIMIT_FILE_SIZE", "LIMIT_FILE_COUNT", "LIMIT_UNEXPECTED_FILE"].includes(error.code) ? 413 : 400;

@@ -6,10 +6,12 @@ export default function DashboardPage() {
   const [plot, setPlot] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [status, setStatus] = useState("");
 
   async function handleLookup(e) {
     e.preventDefault();
     setLoading(true);
+    setStatus("Looking up…");
     setError(null);
     setPlot(null);
     try {
@@ -50,6 +52,7 @@ export default function DashboardPage() {
           {loading ? "Looking up…" : "Look up"}
         </button>
       </form>
+      {loading && <p role="status">{status}</p>}
 
       {error && <p style={{ color: "var(--stamp-600)" }}>{error}</p>}
 

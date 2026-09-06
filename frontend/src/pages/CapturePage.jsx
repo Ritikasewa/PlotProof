@@ -20,6 +20,9 @@ export default function CapturePage() {
   const [verdict, setVerdict] = useState(null);
   const [capturedData, setCapturedData] = useState(null);
   const [txReceipt, setTxReceipt] = useState(null);
+  const [chainPhotoHash, setChainPhotoHash] = useState(null);
+  const [chainStatus, setChainStatus] = useState("");
+  const [pendingHash, setPendingHash] = useState(null);
 
   async function handleCaptured({ frames, lat, lon, gpsAccuracy, captureTimestamp }) {
     setCapturedData({ frames, lat, lon });
@@ -47,6 +50,7 @@ export default function CapturePage() {
 
   async function handleSubmitOnChain() {
     setStep(STEP.SUBMITTING);
+    setChainStatus("Confirm the transaction in your wallet…");
     setError(null);
     try {
       const receipt = await submitVerifiedEvidence(verdict, async () => {
@@ -55,11 +59,13 @@ export default function CapturePage() {
         // Ethereum-native, raw-byte keccak256 anchor.
         const middleFrame = capturedData.frames[Math.floor(capturedData.frames.length / 2)];
         const photoHash = await keccak256OfImage(middleFrame);
-        return submitPlotOnChain(signer, photoHash, capturedData.lat, capturedData.lon, verdict.ipfsCID);
+        setChainPhotoHash(photoHash);
+        return submitPlotOnChain(signer, photoHash, capturedData.lat, capturedData.lon, verdict.ipfsCID, setChainStatus);
       });
       setTxReceipt(receipt);
       setStep(STEP.DONE);
     } catch (err) {
+      if (err.transactionHash) setPendingHash(err.transactionHash);
       setError(err.message);
       setStep(STEP.RESULT);
     }
@@ -70,6 +76,8 @@ export default function CapturePage() {
     setVerdict(null);
     setCapturedData(null);
     setTxReceipt(null);
+    setChainPhotoHash(null);
+    setPendingHash(null);
     setError(null);
   }
 
@@ -79,8 +87,8 @@ export default function CapturePage() {
         <>
           <h1 style={{ fontSize: 28 }}>Submit your plot</h1>
           <p>
-            You'll use your camera directly — no photo uploads. Pan slowly across your field for a few seconds so we
-            can confirm it's a real, current view of your land.
+            You'll use your camera directly — no photo uploads. Move sideways while panning across your field for a
+            few seconds so we can confirm it's a real, current view of your land.
           </p>
           <button className="btn btn-primary" onClick={() => setStep(STEP.CAPTURE)}>
             Open camera
@@ -109,7 +117,7 @@ export default function CapturePage() {
           <VerdictCard verdict={verdict} />
           <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
             {verdict.verdict === "VERIFIED" && (
-              <button className="btn btn-primary" onClick={handleSubmitOnChain}>
+              <button className="btn btn-primary" disabled={Boolean(pendingHash)} onClick={handleSubmitOnChain}>
                 Record on-chain
               </button>
             )}
@@ -123,7 +131,7 @@ export default function CapturePage() {
 
       {step === STEP.SUBMITTING && (
         <div className="ledger-card" style={{ textAlign: "center" }}>
-          <p>Confirm the transaction in your wallet…</p>
+          <p role="status">{chainStatus}</p>
         </div>
       )}
 
@@ -133,6 +141,12 @@ export default function CapturePage() {
           <p>Your plot record is now permanent and your reward has been credited.</p>
           <span className="field-label">Transaction</span>
           <span className="mono">{txReceipt.hash}</span>
+          {chainPhotoHash && (
+            <>
+              <span className="field-label" style={{ display: "block", marginTop: 16 }}>On-chain record hash</span>
+              <span className="mono">{chainPhotoHash}</span>
+            </>
+          )}
           <div style={{ marginTop: 20 }}>
             <button className="btn btn-secondary" onClick={reset}>
               Submit another plot
